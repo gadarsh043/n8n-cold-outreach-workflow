@@ -9,7 +9,7 @@
       "name": "Parse Email JSON",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "position": [
-        3072,
+        3280,
         464
       ],
       "typeVersion": 1.3
@@ -23,7 +23,6 @@
             "caseSensitive": true,
             "typeValidation": "strict"
           },
-          "combinator": "and",
           "conditions": [
             {
               "id": "4957b200-c677-4722-b96f-2bb208aaff56",
@@ -32,7 +31,7 @@
                 "operation": "notEmpty",
                 "singleValue": true
               },
-              "leftValue": "={{ $('Fetch Leads from Sheet').item.json['Email Address '] }}",
+              "leftValue": "={{ $json['Email Address'] }}",
               "rightValue": ""
             },
             {
@@ -41,10 +40,11 @@
                 "type": "string",
                 "operation": "equals"
               },
-              "leftValue": "={{ $('Fetch Leads from Sheet').item.json['Outreach Status '] }}",
+              "leftValue": "={{ $json['Outreach Status'] }}",
               "rightValue": "Pending"
             }
-          ]
+          ],
+          "combinator": "and"
         },
         "options": {}
       },
@@ -62,7 +62,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=You are an expert B2B cold email copywriter for [COMPANY NAME].\n\nABOUT [COMPANY NAME]:\n- Describe your services here\n- Add your unique value proposition\n- Add your website URL\n- Add your contact number\n\nEMAIL RULES:\n- NEVER use \"I hope this email finds you well\"\n- NEVER mention pricing\n- NEVER use more than 4 paragraphs\n- Sound professional, warm and human\n\nOUTPUT RULES:\n- Output ONLY a raw valid JSON object\n- No markdown, no backticks\n{\n  \"Email Subject\": \"subject line here\",\n  \"Email Body\": \"full email body here\"\n}",
+        "text": "=You write short cold emails from Adarsh Gella to engineering leaders. Subject line format: \"Full Stack Developer, [Company Name not domain]\"\n- Company name must be the proper name (Ramp, not ramp.com). Capitalize it properly.\n\nLEAD:\nFirst Name: {{ $json['Full Name'].split(' ')[0] }}\nTitle: {{ $json['Job Title'] }}\nCompany: {{ $json.Company }}\n\nADARSH'S FACTS (use exactly 2 per email, pick different ones for each lead):\nFACT A: 3 years at Quinbay building e-commerce frontends in Vue.js and React, shipped UI adopted by 10,000+ sellers in the first month\nFACT B: Led a Vue 2 to Vue 3 migration with Vite and Pinia across a 15-member team, improved build speeds 2-5x and site performance by 30%\nFACT C: Solo-built Rahify, a full-stack AI travel planner with React, FastAPI, and Supabase that reached 200+ users in its first week with zero-hallucination itineraries\nFACT D: Built developer tooling at Quinbay, a VSCode plugin that auto-generates Jest tests from TypeScript ASTs, cut QA validation time by 73%\nFACT E: Built 4 production apps end-to-end from Figma to deployment, comfortable owning frontend, backend, database, auth, payments, and CI/CD\nFACT F: A general developer who knows how to work on system design and can build an app from scratch. \n\nEMAIL TEMPLATE (follow this structure, but write the OPENING LINE fresh each time):\n\nLine 1: Hi [First Name],\nLine 2: [OPENING LINE - one sentence, max 15 words. State that you are a full-stack engineer reaching out about roles at their company. Vary this sentence every time. Do not mention their title. Do not say \"I noticed\" or \"I came across\" or \"I saw.\"]\nLine 3: [FACT 1 which suits company ideology]. Keep it natural. Make sure to read all the facts and pick up the best top two. \nLine 4: [FACT 2 which suits company ideology]. Keep it natural. Make sure to read all the facts and pick up the best top two. \nLine 5: Graduating MS CS from UT Dallas in May. Authorized to work in the US for 3 years on STEM OPT, no sponsorship needed to start.\nLine 6: Portfolio and resume: adarshgella.com\nLine 7: Would love 10 minutes to chat.\nLine 8: Adarsh Gella\n\nBANNED PHRASES: passionate, excited, thrilled, innovative, cutting-edge, I noticed, I came across, I saw your team, efforts being led, expanding its, delve, leverage, harness, seamlessly\n\nOUTPUT ONLY raw JSON:\n{\n  \"Email Subject\": \"Frontend Engineer, [Company]\",\n  \"Email Body\": \"full email with \\n\\n between paragraphs\"\n}",
         "hasOutputParser": true,
         "options": {}
       },
@@ -70,21 +70,22 @@
       "name": "AI Cold Email Writer",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "position": [
-        2928,
+        3136,
         256
       ],
-      "typeVersion": 3
+      "typeVersion": 3,
+      "retryOnFail": true
     },
     {
       "parameters": {
-        "model": "qwen/qwen3-32b",
+        "model": "llama-3.3-70b-versatile",
         "options": {}
       },
       "id": "59dab260-3e2c-48d0-be54-f5c823d25e1b",
       "name": "Groq LLM (Fast AI)",
       "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
       "position": [
-        2928,
+        3136,
         464
       ],
       "typeVersion": 1,
@@ -100,51 +101,176 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "",
-          "cachedResultUrl": "",
-          "cachedResultName": ""
-        }
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $('Filter Pending Leads').item.json.ID }}",
+            "Email Subject": "={{ $json.output['Email Subject'] }}",
+            "output": "=",
+            "Email Body": "={{ $json.output['Email Body'] }}"
+          },
+          "matchingColumns": [
+            "ID"
+          ],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Full Name",
+              "displayName": "Full Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Profile URL",
+              "displayName": "Profile URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Industry Genre",
+              "displayName": "Industry Genre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Outreach Status",
+              "displayName": "Outreach Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Subject",
+              "displayName": "Email Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Body",
+              "displayName": "Email Body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "output",
+              "displayName": "output",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
       "id": "79a4f3fc-0a6d-4a6c-b86c-b713052a5866",
       "name": "Save Email to Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        3280,
+        3488,
         256
       ],
       "typeVersion": 4.7,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.apollo.io/api/v1/mixed_people/api_search",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"person_titles\": [\"{{ $json['Job Title'] }}\"],\n  \"person_locations\": [\"{{ $json.Location }}\"],\n  \"per_page\": \"{{ $json['Number of Leads'] }}\",\n  \"page\": 1\n}",
-        "options": {}
-      },
-      "id": "5db70332-f89a-4dfd-a41c-f0376c4a3784",
-      "name": "Apollo — Search Leads",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        608,
-        928
-      ],
-      "typeVersion": 4.3
     },
     {
       "parameters": {
@@ -161,10 +287,16 @@
       "name": "Apollo — Enrich Lead Data",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        2736,
+        2944,
         880
       ],
-      "typeVersion": 4.3
+      "typeVersion": 4.3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sBz7c9AeVQljPM0",
+          "name": "Header Auth account"
+        }
+      }
     },
     {
       "parameters": {
@@ -174,7 +306,7 @@
       "name": "Format & Clean Lead Data",
       "type": "n8n-nodes-base.code",
       "position": [
-        2960,
+        3168,
         880
       ],
       "typeVersion": 2
@@ -184,141 +316,147 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "Master Sheet"
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
         },
         "columns": {
+          "mappingMode": "defineBelow",
           "value": {
-            "Company": "={{ $json.Company }}",
-            "Apollo ID": "={{ $json['Apollo ID'] }}",
+            "Company": "={{ $('Search Leads').item.json.data.domain }}",
             "Job Title": "={{ $json['Job Title'] }}",
-            "Full Name ": "={{ $json['Full Name'] }}",
             "Phone Number": "={{ $json['Phone Number'] }}",
-            "Profile URL ": "={{ $json['Profile URL'] }}",
-            "Email Address ": "={{ $json['Email Address'] }}",
             "Company Website": "={{ $json['Company Website'] }}",
-            "Industry Genre ": "={{ $json['Industry Genre'] }}",
-            "Outreach Status ": "Pending"
+            "ID": "={{ $json.ID }}",
+            "Full Name": "={{ $json['Full Name'] }}",
+            "Email Address": "={{ $json['Email Address'] }}",
+            "Profile URL": "={{ $json['Profile URL'] }}",
+            "Industry Genre": "={{ $json['Industry Genre'] }}",
+            "Outreach Status": "={{ $json['Outreach Status'] }}"
           },
+          "matchingColumns": [
+            "ID"
+          ],
           "schema": [
             {
-              "id": "Apollo ID",
-              "type": "string",
-              "display": true,
-              "removed": false,
+              "id": "ID",
+              "displayName": "ID",
               "required": false,
-              "displayName": "Apollo ID",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
-              "id": "Full Name ",
-              "type": "string",
-              "display": true,
+              "id": "Full Name",
+              "displayName": "Full Name",
               "required": false,
-              "displayName": "Full Name ",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
               "id": "Job Title",
-              "type": "string",
-              "display": true,
-              "required": false,
               "displayName": "Job Title",
+              "required": false,
               "defaultMatch": false,
+              "display": true,
+              "type": "string",
               "canBeUsedToMatch": true
             },
             {
               "id": "Company",
-              "type": "string",
-              "display": true,
-              "required": false,
               "displayName": "Company",
+              "required": false,
               "defaultMatch": false,
+              "display": true,
+              "type": "string",
               "canBeUsedToMatch": true
             },
             {
-              "id": "Email Address ",
-              "type": "string",
-              "display": true,
+              "id": "Email Address",
+              "displayName": "Email Address",
               "required": false,
-              "displayName": "Email Address ",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
               "id": "Phone Number",
-              "type": "string",
-              "display": true,
-              "required": false,
               "displayName": "Phone Number",
+              "required": false,
               "defaultMatch": false,
+              "display": true,
+              "type": "string",
               "canBeUsedToMatch": true
             },
             {
-              "id": "Profile URL ",
-              "type": "string",
-              "display": true,
+              "id": "Profile URL",
+              "displayName": "Profile URL",
               "required": false,
-              "displayName": "Profile URL ",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
               "id": "Company Website",
-              "type": "string",
-              "display": true,
-              "required": false,
               "displayName": "Company Website",
+              "required": false,
               "defaultMatch": false,
+              "display": true,
+              "type": "string",
               "canBeUsedToMatch": true
             },
             {
-              "id": "Industry Genre ",
-              "type": "string",
-              "display": true,
+              "id": "Industry Genre",
+              "displayName": "Industry Genre",
               "required": false,
-              "displayName": "Industry Genre ",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
-              "id": "Email Subject ",
-              "type": "string",
-              "display": true,
+              "id": "Outreach Status",
+              "displayName": "Outreach Status",
               "required": false,
-              "displayName": "Email Subject ",
               "defaultMatch": false,
-              "canBeUsedToMatch": true
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Subject",
+              "displayName": "Email Subject",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
             },
             {
               "id": "Email Body",
-              "type": "string",
-              "display": true,
-              "required": false,
               "displayName": "Email Body",
-              "defaultMatch": false,
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Outreach Status ",
-              "type": "string",
-              "display": true,
               "required": false,
-              "displayName": "Outreach Status ",
               "defaultMatch": false,
+              "display": true,
+              "type": "string",
               "canBeUsedToMatch": true
             }
-          ],
-          "mappingMode": "defineBelow",
-          "matchingColumns": [
-            "Apollo ID"
           ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
@@ -329,13 +467,13 @@
       "name": "Save Leads to Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        3184,
-        960
+        1728,
+        544
       ],
       "typeVersion": 4.7,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
@@ -344,44 +482,44 @@
       "parameters": {
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "",
-          "cachedResultUrl": "",
-          "cachedResultName": ""
-        }
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
+        },
+        "options": {}
       },
       "id": "04b41b53-8a87-4c59-a904-96a7f0a091ef",
       "name": "Fetch Leads from Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        2256,
+        2272,
         304
       ],
       "typeVersion": 4.7,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const people = $input.first().json.people || [];\nconst jobTitle = $('Lead Generation Form').first().json['Job Title'] || '';\n\nreturn people.map(person => {\n  return {\n    json: {\n      id: person.id,\n      person: person,\n      designation: jobTitle\n    }\n  };\n});"
+        "jsCode": "const items = $input.all();\n\nreturn items.map(person => {\n  const p = person.json;\n  return {\n    json: {\n      \"ID\": p.id || p.value,\n      \"Full Name\": `${p.first_name || ''} ${p.last_name || ''}`.trim(),\n      \"Job Title\": p.position || '',\n      \"Company\": p.company || '',\n      \"Email Address\": p.value || '',\n      \"Phone Number\": '',\n      \"Profile URL\": p.linkedin || '',\n      \"Company Website\": '',\n      \"Industry Genre\": p.department || '',\n      \"Outreach Status\": \"Pending\"\n    }\n  };\n});"
       },
       "id": "2cbc42cd-ac15-4d44-9c44-256fc2ad46cd",
       "name": "Extract People Data",
       "type": "n8n-nodes-base.code",
       "position": [
-        832,
+        1040,
         928
       ],
-      "typeVersion": 2
+      "typeVersion": 2,
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -411,7 +549,7 @@
       "name": "Skip Duplicates",
       "type": "n8n-nodes-base.if",
       "position": [
-        2224,
+        2432,
         880
       ],
       "typeVersion": 2.3
@@ -420,28 +558,27 @@
       "parameters": {
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "",
-          "cachedResultUrl": "",
-          "cachedResultName": ""
-        }
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
+        },
+        "options": {}
       },
       "id": "fffee28e-4576-46af-a852-72f907cedd5e",
       "name": "Fetch Existing Lead IDs",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        1504,
+        1712,
         928
       ],
       "typeVersion": 4.7,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
@@ -452,7 +589,7 @@
       "name": "Merge for Dedup Check",
       "type": "n8n-nodes-base.merge",
       "position": [
-        1712,
+        1920,
         848
       ],
       "typeVersion": 3.2
@@ -465,7 +602,7 @@
       "name": "Deduplicate Leads",
       "type": "n8n-nodes-base.code",
       "position": [
-        1968,
+        2176,
         880
       ],
       "typeVersion": 2
@@ -480,8 +617,8 @@
       "name": "Process Each Lead",
       "type": "n8n-nodes-base.splitInBatches",
       "position": [
-        1056,
-        928
+        1376,
+        912
       ],
       "typeVersion": 3
     },
@@ -492,16 +629,38 @@
         "formFields": {
           "values": [
             {
-              "fieldLabel": "Job Title",
+              "fieldLabel": "Company Name",
               "requiredField": true
             },
             {
               "fieldLabel": "Location",
+              "defaultValue": "United States",
               "requiredField": true
             },
             {
               "fieldLabel": "Number of Leads",
-              "fieldType": "number",
+              "fieldType": "dropdown",
+              "defaultValue": "1-50",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "1-50"
+                  },
+                  {
+                    "option": "51-200"
+                  },
+                  {
+                    "option": "201-1000"
+                  },
+                  {
+                    "option": "1000+"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Domain Name",
               "requiredField": true
             }
           ]
@@ -526,8 +685,8 @@
       "name": "Email Generation Loop",
       "type": "n8n-nodes-base.splitInBatches",
       "position": [
-        2704,
-        304
+        2736,
+        160
       ],
       "typeVersion": 3
     },
@@ -539,7 +698,7 @@
       "name": "Wait — Email Cooldown (4s)",
       "type": "n8n-nodes-base.wait",
       "position": [
-        3504,
+        3712,
         368
       ],
       "webhookId": "eda8489b-a0d8-4198-bd30-f363b4888ef7",
@@ -553,7 +712,7 @@
       "name": "Wait — Apollo Cooldown (2s)",
       "type": "n8n-nodes-base.wait",
       "position": [
-        2512,
+        2720,
         880
       ],
       "webhookId": "eda8489b-a0d8-4198-bd30-f363b4888ef7",
@@ -575,7 +734,7 @@
       "name": "Send Cold Email via Gmail",
       "type": "n8n-nodes-base.gmail",
       "position": [
-        3920,
+        4128,
         -240
       ],
       "webhookId": "0e4b622d-3106-4253-a2a0-5f0849b1ca92",
@@ -595,7 +754,7 @@
       "name": "Loop Over Items",
       "type": "n8n-nodes-base.splitInBatches",
       "position": [
-        3696,
+        3904,
         -224
       ],
       "typeVersion": 3
@@ -605,29 +764,36 @@
         "operation": "update",
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "",
-          "cachedResultUrl": "",
-          "cachedResultName": ""
-        }
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
       },
       "id": "6dfab97b-dd54-4e5a-a80f-ce3ce9797e54",
       "name": "Update the Outreach Status",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        4144,
+        4352,
         -240
       ],
       "notesInFlow": true,
       "typeVersion": 4.2,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
@@ -661,7 +827,7 @@
       "name": "Filter1",
       "type": "n8n-nodes-base.filter",
       "position": [
-        3472,
+        3680,
         -224
       ],
       "typeVersion": 2.3
@@ -674,7 +840,7 @@
       "name": "Wait — Email Cooldown (60s)",
       "type": "n8n-nodes-base.wait",
       "position": [
-        4368,
+        4576,
         -224
       ],
       "webhookId": "b49e63ed-cfd6-46e4-9951-e6a64276369a",
@@ -684,28 +850,27 @@
       "parameters": {
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": "YOUR_GOOGLE_SHEET_URL_HERE"
+          "value": "https://docs.google.com/spreadsheets/d/1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA/edit?usp=sharing",
+          "mode": "url"
         },
         "sheetName": {
           "__rl": true,
-          "mode": "name",
-          "value": "",
-          "cachedResultUrl": "",
-          "cachedResultName": ""
-        }
+          "value": "Master Lead Generation sheet",
+          "mode": "name"
+        },
+        "options": {}
       },
       "id": "c896a808-c8d3-4277-9abc-f40c2624c4aa",
       "name": "Fetch Leads for Mail",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        3056,
+        3264,
         -224
       ],
       "typeVersion": 4.7,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "UOb4DH1VTdkQy8yc",
+          "id": "Qn73UAM9zebHIIs3",
           "name": "Google Sheets account"
         }
       }
@@ -768,8 +933,8 @@
       "name": "Sticky Note3",
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        1568,
-        608
+        1936,
+        656
       ],
       "typeVersion": 1
     },
@@ -813,7 +978,7 @@
       "name": "Remove Duplicates",
       "type": "n8n-nodes-base.removeDuplicates",
       "position": [
-        3264,
+        3472,
         -224
       ],
       "typeVersion": 2
@@ -844,9 +1009,357 @@
         48
       ],
       "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.data || $input.first().json;\nconst emails = Array.isArray(data) ? data : (data.emails || []);\n\nconst techKeywords = [\n  'engineer', 'engineering', 'cto', 'technical', \n  'frontend', 'backend', 'software', 'web', \n  'developer', 'architect', 'devops', 'infrastructure'\n];\n\nconst blockedTitles = [\n  'sales', 'marketing', 'finance', 'legal', \n  'product management', 'account', 'recruiter',\n  'human resources', 'operations', 'risk',\n  'business', 'revenue', 'growth'\n];\n\nconst filtered = emails.filter(person => {\n  const title = (person.position || '').toLowerCase();\n  \n  const isBlocked = blockedTitles.some(b => title.includes(b));\n  if (isBlocked) return false;\n  \n  const isTech = techKeywords.some(kw => title.includes(kw));\n  const isDeptTech = ['it', 'engineering'].includes(\n    (person.department || '').toLowerCase()\n  );\n  \n  return isTech || isDeptTech;\n});\n\nreturn filtered.map(person => ({ json: person }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        928
+      ],
+      "id": "04a657a0-5eaa-4224-a707-f6a78fd2c175",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hunter.io/v2/domain-search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $json['Domain Name'] }}"
+            },
+            {
+              "name": "seniority",
+              "value": "executive, senior"
+            },
+            {
+              "name": "api_key",
+              "value": "967201f2d0524cad3cd70b8d684e618040954387"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5db70332-f89a-4dfd-a41c-f0376c4a3784",
+      "name": "Search Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        608,
+        928
+      ],
+      "typeVersion": 4.3
     }
   ],
-  "pinData": {},
+  "pinData": {
+    "Search Leads": [
+      {
+        "json": {
+          "data": {
+            "domain": "ramp.com",
+            "disposable": false,
+            "webmail": false,
+            "accept_all": true,
+            "pattern": "{f}{last}",
+            "organization": "Ramp",
+            "linked_domains": [],
+            "emails": [
+              {
+                "value": "obeaulieu@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20olivier%20beaulieu%20ramp",
+                    "extracted_on": "2025-08-20",
+                    "last_seen_on": "2026-03-02",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Olivier",
+                "last_name": "Beaulieu",
+                "position": "Director of Software Engineering",
+                "position_raw": "Director, Software Engineering",
+                "seniority": "executive",
+                "department": "it",
+                "linkedin": "https://www.linkedin.com/in/olivier-beaulieu-5a315020",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-25",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "wpetrie@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20william%20petrie%20ramp",
+                    "extracted_on": "2025-08-16",
+                    "last_seen_on": "2026-03-03",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "William",
+                "last_name": "Petrie",
+                "position": "Chief Financial Officer",
+                "position_raw": "Chief Financial Officer",
+                "seniority": "executive",
+                "department": "finance",
+                "linkedin": "https://www.linkedin.com/in/william-petrie-595b943a",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-04-02",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "spark@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20sammy%20park%20ramp",
+                    "extracted_on": "2025-08-16",
+                    "last_seen_on": "2026-03-03",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Sammy",
+                "last_name": "Park",
+                "position": "Head of Risk Management",
+                "position_raw": "Head of Risk Operations",
+                "seniority": "executive",
+                "department": "management",
+                "linkedin": "https://www.linkedin.com/in/sammy-park-b87a694a",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-31",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "spackard@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20sam%20packard%20ramp",
+                    "extracted_on": "2025-08-08",
+                    "last_seen_on": "2026-03-07",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Sam",
+                "last_name": "Packard",
+                "position": "Senior Director of Product Management",
+                "position_raw": "Senior Director, Product Management",
+                "seniority": "executive",
+                "department": "management",
+                "linkedin": "https://www.linkedin.com/in/sam-packard-586251122",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-27",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "esilverstein@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20elliot%20silverstein%20ramp",
+                    "extracted_on": "2026-02-28",
+                    "last_seen_on": "2026-03-10",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Elliot",
+                "last_name": "Silverstein",
+                "position": "Senior Director of Sales",
+                "position_raw": "Senior Director, Head of Commercial Sales, Inside Sales & Growth Account Management",
+                "seniority": "executive",
+                "department": "sales",
+                "linkedin": "https://www.linkedin.com/in/esilverstein",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-04-01",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "ckennedy@ramp.com",
+                "type": "personal",
+                "confidence": 94,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20colin%20kennedy%20ramp",
+                    "extracted_on": "2025-08-16",
+                    "last_seen_on": "2026-03-16",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Colin",
+                "last_name": "Kennedy",
+                "position": "Chief Business Officer",
+                "position_raw": "Chief Business Officer",
+                "seniority": "executive",
+                "department": "sales",
+                "linkedin": "https://www.linkedin.com/in/colin-kennedy-854aa63",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-30",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "rcox@ramp.com",
+                "type": "personal",
+                "confidence": 93,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20raymond%20cox%20ramp",
+                    "extracted_on": "2025-08-21",
+                    "last_seen_on": "2026-03-05",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Raymond",
+                "last_name": "Cox",
+                "position": "Director of Software Engineering",
+                "position_raw": "Director, Software Engineering",
+                "seniority": "executive",
+                "department": "it",
+                "linkedin": "https://www.linkedin.com/in/raymond-cox-4a561342",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-21",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "imacomber@ramp.com",
+                "type": "personal",
+                "confidence": 93,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20ian%20macomber%20ramp",
+                    "extracted_on": "2025-08-09",
+                    "last_seen_on": "2026-02-28",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Ian",
+                "last_name": "Macomber",
+                "position": "Head of Data Science",
+                "position_raw": "Head of Analytics Engineering & Data Science",
+                "seniority": "executive",
+                "department": "it",
+                "linkedin": "https://www.linkedin.com/in/ian-macomber-8b26b140",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-31",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "lmehr@ramp.com",
+                "type": "personal",
+                "confidence": 93,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20leo%20mehr%20ramp",
+                    "extracted_on": "2025-12-27",
+                    "last_seen_on": "2026-03-08",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Leo",
+                "last_name": "Mehr",
+                "position": "Director of Engineering",
+                "position_raw": "Director of Engineering",
+                "seniority": "executive",
+                "department": "management",
+                "linkedin": "https://www.linkedin.com/in/leo-mehr-a6149264",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-03-31",
+                  "status": "valid"
+                }
+              },
+              {
+                "value": "agopinathan@ramp.com",
+                "type": "personal",
+                "confidence": 93,
+                "sources": [
+                  {
+                    "domain": "linkedin.com",
+                    "uri": "https://www.google.com/search?q=site:linkedin.com%20avinash%20gopinathan%20ramp",
+                    "extracted_on": "2025-08-07",
+                    "last_seen_on": "2026-03-11",
+                    "still_on_page": true
+                  }
+                ],
+                "first_name": "Avinash",
+                "last_name": "Gopinathan",
+                "position": "Director of Credit Risk",
+                "position_raw": "Director, Credit Risk",
+                "seniority": "executive",
+                "department": "management",
+                "linkedin": "https://www.linkedin.com/in/avinash-gopinathan-b0220914",
+                "twitter": null,
+                "phone_number": null,
+                "verification": {
+                  "date": "2026-04-01",
+                  "status": "valid"
+                }
+              }
+            ]
+          },
+          "meta": {
+            "results": 79,
+            "limit": 10,
+            "offset": 0,
+            "params": {
+              "domain": "ramp.com",
+              "company": null,
+              "type": null,
+              "seniority": "executive, senior",
+              "department": null
+            }
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
     "Filter1": {
       "main": [
@@ -954,7 +1467,7 @@
       "main": [
         [
           {
-            "node": "Process Each Lead",
+            "node": "Save Leads to Sheet",
             "type": "main",
             "index": 0
           }
@@ -963,24 +1476,12 @@
     },
     "Save Email to Sheet": {
       "main": [
-        [
-          {
-            "node": "Wait — Email Cooldown (4s)",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Save Leads to Sheet": {
       "main": [
-        [
-          {
-            "node": "Process Each Lead",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "AI Cold Email Writer": {
@@ -1009,7 +1510,7 @@
       "main": [
         [
           {
-            "node": "Email Generation Loop",
+            "node": "AI Cold Email Writer",
             "type": "main",
             "index": 0
           }
@@ -1020,7 +1521,7 @@
       "main": [
         [
           {
-            "node": "Apollo — Search Leads",
+            "node": "Search Leads",
             "type": "main",
             "index": 0
           }
@@ -1036,13 +1537,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "AI Cold Email Writer",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Merge for Dedup Check": {
@@ -1067,17 +1562,6 @@
         ]
       ]
     },
-    "Apollo — Search Leads": {
-      "main": [
-        [
-          {
-            "node": "Extract People Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Fetch Existing Lead IDs": {
       "main": [
         [
@@ -1091,13 +1575,7 @@
     },
     "Format & Clean Lead Data": {
       "main": [
-        [
-          {
-            "node": "Save Leads to Sheet",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Send Cold Email via Gmail": {
@@ -1176,6 +1654,28 @@
           }
         ]
       ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Extract People Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Leads": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1183,7 +1683,7 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "6ba0c01c-81d5-4552-bee2-5d1b1fbced83",
+  "versionId": "5ea0462e-0103-4451-9259-b13a0a53d5ef",
   "meta": {
     "templateId": "14141",
     "templateCredsSetupCompleted": true,

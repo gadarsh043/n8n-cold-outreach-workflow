@@ -1,164 +1,304 @@
-# B2B Lead Generation (n8n Workflow)
+# B2B Lead Generation (n8n)
 
-This repo contains a single n8n workflow export: `B2B Lead Generation.json`.
+This project is a single n8n workflow export: `B2B Lead Generation.json`.
 
-At a high level, the workflow:
-1. Pulls leads from Apollo based on a user-provided **Job Title** and **Location**.
-2. Writes enriched leads into a Google Sheet as **Pending**.
-3. Generates a personalized cold email (subject + body) with Groq.
-4. Sends the email with Gmail and updates outreach status so you can continue the pipeline later.
+It automates a simple outbound loop:
+1. Get leads from Hunter.io using a domain (from a form).
+2. Save leads into Google Sheets with `Outreach Status = Pending`.
+3. Generate a personalized cold email for pending leads using Groq.
+4. Send the email via Gmail and update outreach status in your sheet (once you configure the status transition in the workflow).
 
-## Triggers (two entry points)
+> Note: The workflow export still contains some Apollo-related/unconnected nodes from earlier iterations. The active flow for lead scraping uses Hunter.io (see `Lead Generation Form` → `Search Leads`).
 
-### Trigger 1: Lead Scraper (form)
-- Node: `Lead Generation Form` (`formTrigger`)
-- User provides:
-  - `Job Title`
-  - `Location`
-  - `Number of Leads`
+## Workflow overview
 
-Flow:
-- `Apollo — Search Leads` searches Apollo.
-- `Extract People Data` normalizes search results.
-- `Apollo — Enrich Lead Data` enriches each lead (bulk match).
-- `Format & Clean Lead Data` converts Apollo data into the sheet schema.
-- `Save Leads to Sheet` writes/updates rows in your Google Sheet and sets `Outreach Status ` to `Pending`.
-- Duplicate prevention is handled by `Skip Duplicates` + `Deduplicate Leads` + `removeDuplicates`.
+### Trigger 1: Lead scrape (form)
+Entry point:
+- `Lead Generation Form` (`formTrigger`)
 
-### Trigger 2: Email Generator + Sender (manual)
-- Node: `When clicking Execute Workflow` (`manualTrigger`)
+Connected path:
+- `Lead Generation Form`
+  -> `Search Leads` (HTTP request to Hunter.io)
+  -> `Code in JavaScript` (filters Hunter results to “technical” people)
+  -> `Extract People Data` (normalizes Hunter objects into rows)
+  -> `Save Leads to Sheet` (append/update by `ID`)
 
-Flow:
-- Reads your Google Sheet (`Fetch Leads from Sheet`)
-- Filters to leads that match:
-  - `Outreach Status ` is `Pending`
-  - `Email Address ` is not empty (`Filter Pending Leads`)
-- Generates email content with:
-  - `AI Cold Email Writer` (Groq via `Groq LLM (Fast AI)`)
-- Sends email with:
-  - `Send Cold Email via Gmail`
-- Updates status with:
-  - `Update the Outreach Status`
+### Trigger 2: Email generator + sender (manual)
+Entry point:
+- `When clicking Execute Workflow` (`manualTrigger`)
 
-## Google Sheet schema (column headers must match exactly)
+Connected path:
+- `Fetch Leads from Sheet`
+  -> `Filter Pending Leads` (needs an email + `Outreach Status = Pending`)
+  -> `AI Cold Email Writer` (Groq; returns `Email Subject` + `Email Body`)
+  -> `Save Email to Sheet` (writes subject/body into the sheet)
+  -> `Wait — Email Cooldown (4s)`
+  -> `Fetch Leads for Mail`
+  -> `Remove Duplicates`
+  -> `Filter1` (selects rows where `Outreach Status = Mail Generated`)
+  -> `Loop Over Items`
+  -> `Send Cold Email via Gmail`
+  -> `Update the Outreach Status`
+  -> `Wait — Email Cooldown (60s)` and continues the loop
 
-The workflow references column headers with exact spacing. In particular, several columns include a trailing space in the header name.
+## Google Sheets setup (required)
 
-### Required columns
+The workflow is configured to write to:
+- Sheet document id: `1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA`
+- Sheet tab name: `Master Lead Generation sheet`
 
-| Column header (exact) | Used for |
-|---|---|
-| `Apollo ID` | De-dup key (`matchingColumns`) |
-| `Company` | Lead enrichment |
-| `Job Title` | Lead enrichment + email context |
-| `Full Name ` | Lead display (note trailing space) |
-| `Phone Number` | Lead enrichment |
-| `Profile URL ` | Lead enrichment (note trailing space) |
-| `Email Address ` | Email recipient (note trailing space) |
-| `Company Website` | Email context |
-| `Industry Genre ` | Email context (note trailing space) |
-| `Email Subject ` | Email subject |
-| `Email Body` | Email body |
-| `Outreach Status ` | Pipeline state (note trailing space) |
+You must ensure your sheet has column headers that match what the workflow references.
 
-### Status values expected
+### Columns written/used by the workflow
 
-- `Pending`: used by `Filter Pending Leads` to select leads that need email generation.
-- `Mail Generated`: used by a filter node (`Filter1`) to select leads for the email sending loop.
+These appear in the workflow’s `Save Leads to Sheet` node and `Extract People Data` logic:
+- `ID`
+- `Full Name`
+- `Job Title`
+- `Company`
+- `Email Address`
+- `Phone Number`
+- `Profile URL`
+- `Company Website`
+- `Industry Genre`
+- `Outreach Status`
+- `Email Subject`
+- `Email Body`
 
-Important: in the exported JSON, some “status update / fetch mail” nodes are missing column mappings (see **Configuration checklist**). You must ensure `Outreach Status ` is updated to `Mail Generated` at the appropriate time in your n8n UI.
+These headers are also referenced elsewhere in the workflow (pay special attention to whitespace; see below).
 
-## Credentials you must configure
+### Important: header whitespace mismatch checks
 
-The workflow requires:
-- **Apollo API key** (header auth) for:
-  - `https://api.apollo.io/api/v1/mixed_people/api_search`
-  - `https://api.apollo.io/api/v1/people/bulk_match`
-- **Google Sheets OAuth2**
-- **Groq API key** (node: `Groq LLM (Fast AI)`)
-- **Gmail OAuth2**
+In the exported JSON, some nodes reference headers with different whitespace than others:
+- `Filter Pending Leads` uses: `Email Address` and `Outreach Status` (no trailing whitespace)
+- `Send Cold Email via Gmail` uses: `Email Address ` (with a trailing space)
+- `Filter1` uses: `Outreach Status ` (with a trailing space)
 
-## Configuration checklist (nodes to verify in n8n)
+If your sheet headers don’t include trailing spaces, the email-sending/filtering portion may do nothing.
 
-The JSON export includes placeholders and/or incomplete parameters for several nodes. Before running, open the workflow in n8n and verify these nodes:
+In n8n, open these nodes and make them consistent:
+- `Send Cold Email via Gmail`: set `sendTo` to `...['Email Address']`
+- `Filter1`: set `leftValue` to `...['Outreach Status']`
 
-1. Spreadsheet URL + sheet name
-   - Replace `YOUR_GOOGLE_SHEET_URL_HERE` everywhere it appears.
-   - Ensure the correct sheet name is set to `Master Sheet` (the workflow uses `Master Sheet` for lead saving).
+Or, alternatively, edit your Google Sheet headers to include the trailing spaces (not recommended).
 
-2. Email persistence + status update (may be blank in export)
-   - `Save Email to Sheet`
-   - `Fetch Leads for Mail`
-   - `Update the Outreach Status`
-   - `Fetch Existing Lead IDs`
+## Hunter.io setup
 
-   In the exported file, these nodes show minimal parameters / empty `sheetName` in several places.
-   In the n8n UI, configure them so that:
-   - `Email Subject ` and `Email Body` are written to the sheet from the AI output (`AI Cold Email Writer` outputs JSON with `Email Subject` and `Email Body`).
-   - `Outreach Status ` is set to `Mail Generated` when you want the “send” loop to run.
-   - The “fetch” nodes read the right rows based on `Outreach Status `.
+The workflow uses Hunter’s Domain Search endpoint:
+- `POST https://api.hunter.io/v2/domain-search`
 
-3. Gmail sender details
-   - Node: `Send Cold Email via Gmail`
-   - Update `senderName` (currently `Your Name`) to your actual name/brand.
+The `Search Leads` node passes these query parameters:
+- `domain` = from `Domain Name` in the form
+- `seniority` = `executive, senior`
+- `api_key` = set in the node (currently hardcoded in the export; you should replace it)
 
-## Customizing the AI cold email prompt
+### Credentials you should configure in n8n
 
-Node: `AI Cold Email Writer`
+Best practice: don’t hardcode your API key in the node JSON.
 
-It instructs the model to:
-- Write as a B2B cold email copywriter for `[COMPANY NAME]`
-- Never use: `I hope this email finds you well`
-- Never mention pricing
-- Use at most 4 paragraphs
-- Output a **raw JSON object only** with exactly:
+In n8n:
+1. Open `Search Leads` (HTTP Request).
+2. Replace the `api_key` query parameter value with either:
+   - an n8n credential (if you configured one for Hunter), or
+   - an environment variable, or
+   - an n8n expression pointing to a secret you manage.
+
+If you keep it as-is initially, you can still run, but you should update it before committing/redistributing.
+
+### Lead filtering logic (important)
+
+After Hunter returns email candidates, the workflow filters them in:
+- `Code in JavaScript`:
+  - Keeps people when their `position` or `department` matches “technical” keywords (e.g., engineer, engineering, CTO, backend, frontend, developer, devops, infrastructure), OR department is exactly `it` or `engineering`.
+  - Drops people whose position contains “blocked” titles (sales/marketing/finance/legal/product management/recruiter/hr/operations/risk/business/revenue/growth).
+
+This is why “Number of Leads” and “Location” from the form may not change results unless you also adjust the filtering/search logic.
+
+### Search Leads (HTTP Request) configuration checklist
+
+Open `Search Leads` and verify:
+- `Method`: `POST`
+- `URL`: `https://api.hunter.io/v2/domain-search`
+- Query parameters:
+  - `domain`: should be `={{ $json['Domain Name'] }}`
+  - `seniority`: should be `executive, senior` (or whatever you want)
+  - `api_key`: set it to your Hunter API key (ideally via a secret/env var)
+
+If you use an environment variable in n8n, a common pattern is:
+- `api_key = {{$env.HUNTER_API_KEY}}`
+
+## Groq (AI) setup
+
+The workflow uses:
+- Node: `Groq LLM (Fast AI)` with model `llama-3.3-70b-versatile` set in the export
+- Node: `AI Cold Email Writer` (`@n8n/n8n-nodes-langchain.agent`)
+
+You’ll need a Groq API key (from [console.groq.com](https://console.groq.com/)).
+
+The prompt is highly specific to your template:
+- It writes cold emails from “Adarsh Gella” to engineering leaders.
+- It includes a pool of FACTS (A–F) and banned phrases.
+- Output is constrained to raw JSON only:
   - `Email Subject`
   - `Email Body`
 
-Update this prompt’s company-specific section:
-- Replace the `[COMPANY NAME]` placeholders and the bullet points under `ABOUT [COMPANY NAME]` with your actual:
-  - services
-  - unique value proposition
-  - website URL
-  - contact number
+### How to customize the prompt
 
-You can also swap the Groq model in `Groq LLM (Fast AI)` (currently `qwen/qwen3-32b`).
+Open `AI Cold Email Writer` and edit the `text` field:
+1. Replace the opening/intro facts with the facts you want to use.
+2. Update the portfolio URL and the “would love 10 minutes to chat” line if needed.
+3. If you want a different subject format or different banned phrases, update the instructions section.
 
-## How to run
+Because the workflow’s `Save Email to Sheet` node expects `output['Email Subject']` and `output['Email Body']`, keep those keys exactly.
 
-### Step 1: Generate leads
-1. Open n8n.
-2. Find the workflow `B2B Lead Generation`.
-3. Execute Trigger 1 by submitting `Lead Generation Form` with:
-   - a job title
-   - a location
-   - a lead count
-4. Confirm your Google Sheet rows are created/updated with:
-   - outreach status `Pending`
-   - populated `Email Address ` (filtering will skip blank emails)
+## Gmail setup
 
-### Step 2: Generate and send emails
-1. Run the manual trigger: `When clicking Execute Workflow`.
-2. Confirm that:
-   - leads in `Pending` are receiving AI-generated `Email Subject ` + `Email Body`
-   - your “send” loop finds leads with `Outreach Status ` = `Mail Generated`
-   - status updates occur after the Gmail send
+The workflow sends using:
+- Node: `Send Cold Email via Gmail` (`gmail` node)
+- Credential: `Gmail account` (OAuth2)
 
-If the email sending loop does nothing, the most common cause is that `Outreach Status ` never becomes `Mail Generated` due to the missing column mappings described above.
+You must configure:
+1. Gmail OAuth2 credential in the node.
+2. `senderName` (currently `Your Name` in the export).
+3. Verify `sendTo` uses the correct sheet header (`Email Address`, not `Email Address `).
 
-## Throttling / cooldown behavior
+## Outreach status state machine (critical)
 
-The workflow includes explicit wait nodes to reduce rate-limits and smooth the execution:
-- `Wait — Apollo Cooldown (2s)`
-- `Wait — Email Cooldown (4s)`
-- `Wait — Email Cooldown (60s)`
+The workflow intends this state flow:
+1. During lead scrape: set `Outreach Status = Pending`
+2. During AI generation: write `Email Subject` + `Email Body`
+3. Before sending: set `Outreach Status = Mail Generated`
+4. Email sending loop: `Filter1` selects `Outreach Status = Mail Generated`
+5. After sending: update status again in `Update the Outreach Status`
 
-## Known quirks to be aware of (from the export)
+In the current export, `Extract People Data` sets `Outreach Status: "Pending"`.
 
-- Several nodes in the email/sending portion are missing exported column mappings (notably `Save Email to Sheet`, `Fetch Leads for Mail`, `Update the Outreach Status`, `Fetch Existing Lead IDs`). Treat them as “configure in n8n” nodes.
-- The Apollo enrichment bulk match references a single ID (`$('Deduplicate Leads').first().json.id`). If you intend to enrich multiple leads per run, you may need to adjust that node logic.
+However (as exported):
+- `Save Email to Sheet` (as exported) only writes `Email Subject` and `Email Body` (no explicit `Outreach Status = Mail Generated` mapping).
+- `Filter1` selects `Outreach Status = Mail Generated`
+
+### What to do in n8n so the send loop runs
+
+To make the send loop work end-to-end, you want to ensure the sheet transitions like this:
+`Pending` (after lead scrape)
+-> `Mail Generated` (after AI generation)
+-> `Sent` (after Gmail send)
+
+Update one of these so `Outreach Status` becomes `Mail Generated` after AI email generation:
+1. Option A (recommended): modify `Save Email to Sheet` to also set `Outreach Status = Mail Generated`.
+   - In `Save Email to Sheet`, add a mapping for `Outreach Status`.
+2. Option B: modify `Filter1` to select `Outreach Status = Pending` instead of `Mail Generated`.
+3. Option C: set `Outreach Status` manually in the sheet after AI generation.
+
+Without one of the above, the send loop will likely match zero rows.
+
+Also make sure `Update the Outreach Status` changes the status after sending (otherwise you may resend repeatedly):
+1. Open `Update the Outreach Status`.
+2. Configure it to update `Outreach Status` for the current row to something like `Sent`.
+3. Keep `Filter1` targeting only `Mail Generated` rows so the loop stops after each send.
+
+## Step-by-step setup in n8n (detailed)
+
+1. Import the workflow
+   - In n8n: `Workflows` → `Import from file`
+   - Select `B2B Lead Generation.json`
+
+2. Configure credentials
+   - Hunter: either replace the `api_key` query value in `Search Leads`, or move it to a secret/env var
+   - Google Sheets OAuth2: `Credentials` → add `Google Sheets OAuth2` → authorize with a Google account that has access to the target spreadsheet
+   - Groq credential: `Credentials` → add `Groq API` (or similarly named Groq credential) → paste your Groq API key and save
+   - Gmail OAuth2: `Credentials` → add `Gmail OAuth2` → authorize the sender account you will email from
+
+3. Configure Google Sheet tab + headers
+   - Ensure the spreadsheet and tab name match the export:
+     - document id `1cGZWNhzSSani12XS9wvPwMwd_4VPmRgV3TY4FFs5ZTA`
+     - tab `Master Lead Generation sheet`
+   - Ensure headers are exactly:
+     - `ID`, `Full Name`, `Job Title`, `Company`, `Email Address`, `Phone Number`, `Profile URL`, `Company Website`, `Industry Genre`, `Outreach Status`, `Email Subject`, `Email Body`
+
+4. Connect/fix the sheet->email matching (whitespace)
+   - Open `Filter Pending Leads` and verify it references the same header names you have in Sheets (`Email Address`, `Outreach Status`).
+   - Open `Send Cold Email via Gmail` and change `sendTo` to use `['Email Address']` (no trailing whitespace).
+   - Open `Filter1` and change its `leftValue` to use `['Outreach Status']` (no trailing whitespace).
+
+5. Ensure email sending has something to send
+   - Decide how you want to mark “mail ready”:
+     - modify `Save Email to Sheet` to set `Outreach Status = Mail Generated`, or
+     - modify `Filter1` to check `Pending`, or
+     - manually update the sheet.
+
+6. Customize the email prompt
+   - Open `AI Cold Email Writer` and update facts, portfolio link, and any “banned phrases”.
+
+7. Node-by-node verification (recommended before your first real run)
+
+Verify these nodes in order:
+- `Lead Generation Form`: fields exist exactly as in the form node:
+  - `Company Name`, `Location`, `Number of Leads`, `Domain Name`
+- `Search Leads`: returns Hunter’s response including `data.emails[]`
+- `Code in JavaScript`: outputs only “technical” candidates (filtered list)
+- `Extract People Data`: outputs rows with:
+  - `ID` (email address)
+  - `Email Address`
+  - `Outreach Status = Pending`
+- `Save Leads to Sheet`:
+  - `sheetName` equals `Master Lead Generation sheet`
+  - `matchingColumns` uses `ID`
+- `Fetch Leads from Sheet`:
+  - reads from the same sheet/tab
+- `Filter Pending Leads`:
+  - checks `Email Address` is not empty
+  - checks `Outreach Status = Pending`
+- `AI Cold Email Writer`:
+  - produces JSON with `output.Email Subject` and `output.Email Body`
+- `Save Email to Sheet`:
+  - writes `Email Subject` and `Email Body` into the correct columns
+  - (if you want automatic sending) also updates `Outreach Status = Mail Generated`
+- `Fetch Leads for Mail` + `Filter1`:
+  - `Filter1` selects rows where `Outreach Status = Mail Generated`
+- `Send Cold Email via Gmail`:
+  - `sendTo` references the correct header (`Email Address`)
+- `Update the Outreach Status`:
+  - after sending, update `Outreach Status` to something like `Sent` (so you don’t resend)
+
+8. Run Trigger 1 end-to-end (lead scrape)
+   - Execute `Lead Generation Form` once with:
+     - `Company Name`
+     - `Location`
+     - `Number of Leads`
+     - `Domain Name`
+   - Confirm your sheet gets new rows with:
+     - `ID` populated (email address)
+     - `Email Address`
+     - `Outreach Status = Pending`
+
+9. Run Trigger 2 end-to-end (generate and send)
+   - Execute `When clicking Execute Workflow` (manual).
+   - In execution logs, confirm:
+     - `Filter Pending Leads` selects rows
+     - `AI Cold Email Writer` produces `Email Subject` and `Email Body`
+     - `Save Email to Sheet` writes them to the sheet
+     - the sheet rows you expect are selected by `Filter1`
+     - Gmail send executes (and `Update the Outreach Status` runs)
+
+## Troubleshooting
+
+### “No emails were sent”
+Most common causes:
+1. `Filter1` matches zero rows (status mismatch: `Pending` vs `Mail Generated`).
+2. `sendTo` references a header with trailing whitespace (`Email Address ` vs `Email Address`).
+3. Gmail node credential isn’t connected.
+
+### “AI runs but the sheet isn’t updated”
+1. Check `Save Email to Sheet` column mappings.
+2. Confirm the AI node output parser produces `output['Email Subject']` and `output['Email Body']`.
+
+## Notes
+
+- The workflow export contains older Apollo-related nodes. They are not part of the Hunter-driven “Lead scrape” branch shown in the connections.
+- Review the n8n execution logs at least once after your configuration changes, so you can verify the state transitions in your sheet.
 
 ## License
 
-No license file is included in this export. Add one if you plan to publish or share this workflow.
+No license file is included in this export.
 
